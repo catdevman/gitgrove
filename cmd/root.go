@@ -11,6 +11,12 @@ import (
 var cfgPath string
 var cfg *config.Config
 
+// SetVersion injects build-time version info from ldflags.
+func SetVersion(v, c, d string) {
+	rootCmd.Version = v
+	rootCmd.Long += "\n\nversion: " + v + " (" + c + ") built " + d
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "gitgrove",
 	Short: "Manage git worktree groves across multiple repos",
