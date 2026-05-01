@@ -35,17 +35,3 @@ changelog:
       - Merge pull request
       - Merge branch
 
-homebrew_casks:
-  - name: gitgrove
-    homepage: https://github.com/catdevman/gitgrove
-    description: "Group git repos into task-scoped worktree groves for AI coding tools"
-    license: MIT
-    directory: Casks
-    repository:
-      owner: catdevman
-      name: homebrew-tools
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    commit_author:
-      name: goreleaserbot
-      email: bot@goreleaser.com
-    commit_msg_template: "chore: brew cask update for {{ .ProjectName }} {{ .Tag }}"
