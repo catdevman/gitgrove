@@ -27,6 +27,7 @@ checksum:
 
 brews:
   - name: gitgrove
+    directory: Formula
     repository:
       owner: catdevman
       name: homebrew-tools
