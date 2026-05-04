@@ -29,10 +29,13 @@ homebrew_casks:
   - name: gitgrove
     repository:
       owner: catdevman
-      name: homebrew-tap
+      name: homebrew-tools
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/catdevman/gitgrove"
     description: "Task-scoped git worktree workspaces for AI coding tools"
+
+release:
+  replace_existing_artifacts: true
 
 changelog:
   sort: asc
