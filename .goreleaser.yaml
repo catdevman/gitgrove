@@ -25,7 +25,7 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-homebrew_casks:
+brews:
   - name: gitgrove
     repository:
       owner: catdevman
