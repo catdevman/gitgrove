@@ -34,10 +34,14 @@ go install github.com/catdevman/gitgrove@latest
 # Plant a grove
 gitgrove create my-feature
 
-# Add some repos (source:branch pairs)
-gitgrove add my-feature ~/code/backend:feat/new-api ~/code/frontend:feat/new-ui
+# Add repos — local paths or remote URLs, branch is after the colon
+gitgrove add my-feature ~/code/backend:feat/new-api
+gitgrove add my-feature https://github.com/org/frontend:feat/new-ui
 
-# Grow the worktrees
+# Validate your config before doing anything
+gitgrove doctor my-feature
+
+# Grow the worktrees (clones remotes automatically on first sync)
 gitgrove sync my-feature
 
 # Point your AI at ~/groves/my-feature and get to work
@@ -52,28 +56,67 @@ gitgrove sync my-feature
 | `gitgrove list` | See all your groves |
 | `gitgrove add <grove> <source:branch> ...` | Add one or more repos to a grove |
 | `gitgrove remove <grove> <name>` | Remove a repo from a grove |
-| `gitgrove sync [grove]` | Create any missing worktrees on disk |
+| `gitgrove sync [grove]` | Create missing worktrees and fix any branch drift |
 | `gitgrove status [grove]` | Check what's synced, what's missing, what's drifted |
+| `gitgrove doctor [grove]` | Validate config before you sync — exits non-zero on errors |
 
 ## Status at a Glance
 
 ```sh
 $ gitgrove status my-feature
 
-GROVE       REPO      STATUS   CONFIG BRANCH  ACTUAL BRANCH
-my-feature  backend   OK       feat/new-api   feat/new-api
-my-feature  frontend  MISSING  feat/new-ui
-
-1 repo in "my-feature" not synced — run: gitgrove sync my-feature
+GROVE       REPO      STATUS          CONFIG BRANCH  ACTUAL BRANCH
+my-feature  backend   OK              feat/new-api   feat/new-api
+my-feature  frontend  BRANCH MISMATCH feat/new-ui    main
+my-feature  shared    MISSING         main
 ```
 
-No mystery. No digging. Just run the command it tells you.
+Run `gitgrove sync my-feature` and it will fix the branch mismatch and create the missing worktree in one pass.
+
+## Doctor
+
+Run `doctor` before `sync` to catch problems early:
+
+```sh
+$ gitgrove doctor my-feature
+
+GROVE       REPO      CHECK       STATUS  DETAIL
+my-feature  backend   source      OK      ~/code/backend
+my-feature  backend   branch      OK      feat/new-api
+my-feature  frontend  source      OK      remote URL (will clone to ~/.local/share/gitgrove/repos/github.com/org/frontend on sync)
+my-feature  shared    source      ERROR   not a git repo: ~/code/typo
+```
+
+Exits with a non-zero status if any errors are found — useful in scripts or CI.
+
+## Remote Repos
+
+You can add repos by URL — GitGrove will clone them automatically on first sync:
+
+```sh
+gitgrove add my-feature https://github.com/org/repo:feat/thing
+gitgrove add my-feature git@github.com:org/repo.git:main
+```
+
+Clones are cached under `~/.local/share/gitgrove/repos/` using a directory structure that mirrors the URL:
+
+```
+~/.local/share/gitgrove/repos/
+└── github.com/
+    └── org/
+        └── repo/     ← bare clone, shared across all groves
+```
+
+Subsequent syncs reuse the cached clone — no re-downloading.
 
 ## Config
 
 Everything lives in `~/.config/gitgrove/config.toml`. It's the source of truth — `sync` reconciles the filesystem to match it.
 
 ```toml
+# Optional: override where remote repos are cached (default: ~/.local/share/gitgrove/repos)
+cache_dir = "~/code"
+
 [groves.my-feature]
 path = "~/groves/my-feature"
 
@@ -84,7 +127,7 @@ branch = "feat/new-api"
 
 [[groves.my-feature.repos]]
 name = "frontend"
-source = "~/code/frontend"
+source = "https://github.com/org/frontend"
 branch = "feat/new-ui"
 ```
 
@@ -93,9 +136,11 @@ Edit it by hand or use the CLI — either works.
 ## A Few Things to Know
 
 - **Groves live at `~/groves/<name>` by default.** Override with `--path` on `create`.
-- **Repos must already be cloned locally.** GitGrove links them; it doesn't clone them (yet).
+- **Branches are created automatically.** If the branch you specify doesn't exist yet, `sync` creates it from HEAD.
+- **`sync` fixes branch drift.** If a worktree exists but is on the wrong branch, `sync` switches it — no need to remove and re-add.
+- **Remote repos are cloned on demand.** Pass an `https://` or `git@` URL as the source and `sync` handles the clone on first use.
 - **Nothing is duplicated.** Worktrees share the same git object store as your source repo. Disk usage is minimal.
-- **`sync` is safe to re-run.** It skips repos that are already linked.
+- **`sync` is safe to re-run.** It skips anything already in the correct state.
 
 ## Why Worktrees?
 
