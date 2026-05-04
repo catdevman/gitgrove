@@ -25,6 +25,15 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+homebrew_casks:
+  - name: gitgrove
+    repository:
+      owner: catdevman
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/catdevman/gitgrove"
+    description: "Task-scoped git worktree workspaces for AI coding tools"
+
 changelog:
   sort: asc
   filters:
