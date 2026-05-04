@@ -7,9 +7,18 @@ import (
 )
 
 // WorktreeAdd creates a linked worktree at destPath for the given branch,
-// using the repo at sourcePath as the git directory.
+// using the repo at sourcePath as the git directory. If the branch does not
+// yet exist it is created from HEAD via -b.
 func WorktreeAdd(sourcePath, destPath, branch string) error {
-	return run(sourcePath, "worktree", "add", destPath, branch)
+	if branchExists(sourcePath, branch) {
+		return run(sourcePath, "worktree", "add", destPath, branch)
+	}
+	return run(sourcePath, "worktree", "add", "-b", branch, destPath)
+}
+
+func branchExists(repoPath, branch string) bool {
+	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", branch)
+	return cmd.Run() == nil
 }
 
 // WorktreeRemove removes the worktree at destPath.
