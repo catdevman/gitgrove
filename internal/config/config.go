@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -23,7 +25,60 @@ type Grove struct {
 
 // Config is the top-level configuration.
 type Config struct {
-	Groves map[string]*Grove `toml:"groves"`
+	CacheDir string            `toml:"cache_dir,omitempty"`
+	Groves   map[string]*Grove `toml:"groves"`
+}
+
+// EffectiveCacheDir returns the configured cache directory, or the default
+// (~/.local/share/gitgrove/repos) when none is set.
+func (c *Config) EffectiveCacheDir() (string, error) {
+	if c.CacheDir != "" {
+		return c.CacheDir, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("could not determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".local", "share", "gitgrove", "repos"), nil
+}
+
+// IsRemoteSource reports whether source is a remote URL rather than a local path.
+func IsRemoteSource(source string) bool {
+	return strings.HasPrefix(source, "https://") ||
+		strings.HasPrefix(source, "git@") ||
+		strings.HasPrefix(source, "ssh://")
+}
+
+// RemoteClonePath returns the local path where remoteURL should be cloned,
+// mirroring the URL structure: cacheDir/host/owner/repo.
+func RemoteClonePath(cacheDir, remoteURL string) (string, error) {
+	host, repoPath, err := parseRemoteURL(remoteURL)
+	if err != nil {
+		return "", err
+	}
+	parts := append([]string{cacheDir, host}, strings.Split(repoPath, "/")...)
+	return filepath.Join(parts...), nil
+}
+
+func parseRemoteURL(remoteURL string) (host, repoPath string, err error) {
+	if strings.HasPrefix(remoteURL, "git@") {
+		// git@github.com:owner/repo.git
+		rest := strings.TrimPrefix(remoteURL, "git@")
+		idx := strings.Index(rest, ":")
+		if idx == -1 {
+			return "", "", fmt.Errorf("invalid git@ URL: %s", remoteURL)
+		}
+		host = rest[:idx]
+		repoPath = strings.TrimSuffix(rest[idx+1:], ".git")
+		return
+	}
+	u, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid URL %s: %w", remoteURL, err)
+	}
+	host = u.Host
+	repoPath = strings.TrimSuffix(strings.TrimPrefix(u.Path, "/"), ".git")
+	return
 }
 
 // DefaultPath returns the default config file path (~/.config/gitgrove/config.toml).
@@ -48,11 +103,11 @@ func Load(path string) (*Config, error) {
 	if cfg.Groves == nil {
 		cfg.Groves = make(map[string]*Grove)
 	}
-	// Expand ~ in grove paths.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
+	cfg.CacheDir = expandHome(cfg.CacheDir, home)
 	for _, g := range cfg.Groves {
 		g.Path = expandHome(g.Path, home)
 		for i := range g.Repos {
