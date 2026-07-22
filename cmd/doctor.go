@@ -5,7 +5,6 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/catdevman/gitgrove/internal/config"
 	"github.com/catdevman/gitgrove/internal/grove"
 	"github.com/spf13/cobra"
 )
@@ -24,16 +23,17 @@ are checked. Exits non-zero if any errors are found.`,
 			return err
 		}
 
-		groves := cfg.Groves
+		var names []string
 		if len(args) == 1 {
-			g, ok := groves[args[0]]
-			if !ok {
+			if _, ok := cfg.Groves[args[0]]; !ok {
 				return fmt.Errorf("grove %q not found", args[0])
 			}
-			groves = map[string]*config.Grove{args[0]: g}
+			names = append(names, args[0])
+		} else {
+			names = groveNames()
 		}
 
-		if len(groves) == 0 {
+		if len(names) == 0 {
 			fmt.Println("no groves configured")
 			return nil
 		}
@@ -43,8 +43,8 @@ are checked. Exits non-zero if any errors are found.`,
 
 		hasError := false
 		labels := []string{"OK", "WARN", "ERROR"}
-		for name, g := range groves {
-			for _, issue := range grove.Doctor(name, g, cacheDir) {
+		for _, name := range names {
+			for _, issue := range grove.Doctor(name, cfg.Groves[name], cacheDir) {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 					name, issue.Repo, issue.Check, labels[issue.Severity], issue.Message)
 				if issue.Severity == grove.SeverityError {

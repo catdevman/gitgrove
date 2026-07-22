@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/catdevman/gitgrove/internal/config"
 	"github.com/spf13/cobra"
@@ -61,4 +62,16 @@ func loadConfig() {
 
 func saveConfig() error {
 	return config.Save(cfg, cfgPath)
+}
+
+// groveNames returns the configured grove names in sorted order. Ranging over
+// the map directly would shuffle output between runs, which makes the tables
+// hard to read and impossible to diff.
+func groveNames() []string {
+	names := make([]string, 0, len(cfg.Groves))
+	for name := range cfg.Groves {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

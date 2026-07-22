@@ -50,8 +50,12 @@ var deleteCmd = &cobra.Command{
 		prune, _ := cmd.Flags().GetBool("prune")
 		if prune {
 			force, _ := cmd.Flags().GetBool("force")
+			cacheDir, err := cfg.EffectiveCacheDir()
+			if err != nil {
+				return err
+			}
 			fmt.Printf("pruning worktrees for grove %q\n", name)
-			if err := grove.Remove(name, g, force); err != nil {
+			if err := grove.Remove(name, g, cacheDir, force); err != nil {
 				return err
 			}
 		}
@@ -74,7 +78,8 @@ var listCmd = &cobra.Command{
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "GROVE\tPATH\tREPOS")
-		for name, g := range cfg.Groves {
+		for _, name := range groveNames() {
+			g := cfg.Groves[name]
 			fmt.Fprintf(w, "%s\t%s\t%d\n", name, g.Path, len(g.Repos))
 		}
 		return w.Flush()

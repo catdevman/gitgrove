@@ -24,17 +24,15 @@ Run 'gitgrove sync <grove>' to create their worktrees.`,
 			return nil
 		}
 
-		var groveNames []string
+		var names []string
 		if len(args) == 1 {
 			name := args[0]
 			if _, exists := cfg.Groves[name]; !exists {
 				return fmt.Errorf("grove %q not found", name)
 			}
-			groveNames = append(groveNames, name)
+			names = append(names, name)
 		} else {
-			for name := range cfg.Groves {
-				groveNames = append(groveNames, name)
-			}
+			names = groveNames()
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -43,7 +41,7 @@ Run 'gitgrove sync <grove>' to create their worktrees.`,
 		// Track which groves have unsynced repos so we can print hints after the table.
 		needsSync := map[string]int{}
 
-		for _, name := range groveNames {
+		for _, name := range names {
 			g := cfg.Groves[name]
 			s := grove.GetStatus(name, g)
 			if len(s.Repos) == 0 {
@@ -63,7 +61,7 @@ Run 'gitgrove sync <grove>' to create their worktrees.`,
 
 		if len(needsSync) > 0 {
 			fmt.Println()
-			for _, name := range groveNames {
+			for _, name := range names {
 				n := needsSync[name]
 				if n == 0 {
 					continue

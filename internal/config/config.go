@@ -117,23 +117,92 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// Save writes the config to the given path, creating parent directories as needed.
+// Save writes the config to the given path, creating parent directories as
+// needed. The write is atomic: the config is encoded to a temporary file in the
+// same directory and then renamed over the target, so an interrupted write
+// cannot leave a truncated or empty config behind.
 func Save(cfg *Config, path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("could not create config directory: %w", err)
 	}
-	f, err := os.Create(path)
+
+	// Paths are expanded on load; contract them back so a config written as
+	// "~/code/backend" survives a round trip instead of being rewritten
+	// absolute.
+	out := contractPaths(cfg)
+
+	f, err := os.CreateTemp(dir, ".config-*.toml")
 	if err != nil {
 		return fmt.Errorf("could not write config: %w", err)
 	}
-	defer f.Close()
-	enc := toml.NewEncoder(f)
-	return enc.Encode(cfg)
+	tmp := f.Name()
+	defer os.Remove(tmp) // no-op once the rename succeeds
+
+	if err := toml.NewEncoder(f).Encode(out); err != nil {
+		f.Close()
+		return fmt.Errorf("could not encode config: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("could not flush config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("could not write config: %w", err)
+	}
+	if err := os.Chmod(tmp, 0o644); err != nil {
+		return fmt.Errorf("could not set config permissions: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("could not replace config: %w", err)
+	}
+	return nil
+}
+
+// contractPaths returns a deep copy of cfg with $HOME-prefixed paths rewritten
+// back to "~/" form. The copy keeps the in-memory config expanded so callers
+// that continue using it after a save still see absolute paths.
+func contractPaths(cfg *Config) *Config {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return cfg
+	}
+	out := &Config{
+		CacheDir: contractHome(cfg.CacheDir, home),
+		Groves:   make(map[string]*Grove, len(cfg.Groves)),
+	}
+	for name, g := range cfg.Groves {
+		ng := &Grove{
+			Path:  contractHome(g.Path, home),
+			Repos: make([]Repo, len(g.Repos)),
+		}
+		copy(ng.Repos, g.Repos)
+		for i := range ng.Repos {
+			ng.Repos[i].Source = contractHome(ng.Repos[i].Source, home)
+		}
+		out.Groves[name] = ng
+	}
+	return out
 }
 
 func expandHome(path, home string) string {
 	if len(path) >= 2 && path[:2] == "~/" {
 		return filepath.Join(home, path[2:])
+	}
+	return path
+}
+
+// contractHome is the inverse of expandHome: it rewrites a path under home to
+// use the "~/" prefix. Remote sources and paths outside home are left alone.
+func contractHome(path, home string) string {
+	if path == "" || home == "" || IsRemoteSource(path) {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	if strings.HasPrefix(path, home+string(filepath.Separator)) {
+		return "~/" + filepath.ToSlash(path[len(home)+1:])
 	}
 	return path
 }

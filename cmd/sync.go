@@ -36,9 +36,9 @@ are synced.`,
 			fmt.Println("no groves configured")
 			return nil
 		}
-		for name, g := range cfg.Groves {
+		for _, name := range groveNames() {
 			fmt.Printf("syncing grove %q\n", name)
-			if err := grove.Sync(name, g, cacheDir); err != nil {
+			if err := grove.Sync(name, cfg.Groves[name], cacheDir); err != nil {
 				return err
 			}
 		}

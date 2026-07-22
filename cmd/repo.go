@@ -102,11 +102,15 @@ var removeCmd = &cobra.Command{
 		prune, _ := cmd.Flags().GetBool("prune")
 		if prune {
 			force, _ := cmd.Flags().GetBool("force")
+			cacheDir, err := cfg.EffectiveCacheDir()
+			if err != nil {
+				return err
+			}
 			singleGrove := &config.Grove{
 				Path:  g.Path,
 				Repos: []config.Repo{g.Repos[idx]},
 			}
-			if err := grove.Remove(groveName, singleGrove, force); err != nil {
+			if err := grove.Remove(groveName, singleGrove, cacheDir, force); err != nil {
 				return err
 			}
 		}
