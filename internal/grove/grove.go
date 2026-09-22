@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/catdevman/gitgrove/internal/config"
+	"github.com/catdevman/gitgrove/internal/dirs"
 	"github.com/catdevman/gitgrove/internal/git"
 )
 
@@ -47,7 +48,7 @@ func Doctor(name string, g *config.Grove, cacheDir string) []Issue {
 				issues = append(issues, Issue{repo.Name, "source", SeverityOK, fmt.Sprintf("remote URL (will clone to %s on sync)", clonePath)})
 			}
 		} else if !git.IsGitRepo(repo.Source) {
-			issues = append(issues, Issue{repo.Name, "source", SeverityError, fmt.Sprintf("not a git repo: %s", repo.Source)})
+			issues = append(issues, Issue{repo.Name, "source", SeverityError, fmt.Sprintf("not a git repo: %s — add it without a branch to copy it in as a plain directory", repo.Source)})
 		} else {
 			issues = append(issues, Issue{repo.Name, "source", SeverityOK, repo.Source})
 		}
@@ -66,10 +67,45 @@ func Doctor(name string, g *config.Grove, cacheDir string) []Issue {
 		seen[dest] = true
 	}
 
+	for _, d := range g.Dirs {
+		issues = append(issues, doctorDir(d)...)
+
+		dest := filepath.Join(g.Path, d.Name)
+		if seen[dest] {
+			issues = append(issues, Issue{d.Name, "dest", SeverityError, fmt.Sprintf("duplicate path: %s", dest)})
+		}
+		seen[dest] = true
+	}
+
 	if err := checkPathCreatable(g.Path); err != nil {
 		issues = append(issues, Issue{"", "grove-path", SeverityError, err.Error()})
 	}
 
+	return issues
+}
+
+// doctorDir validates a single plain directory entry.
+func doctorDir(d config.Dir) []Issue {
+	mode := d.EffectiveMode()
+	if !dirs.ValidMode(mode) {
+		return []Issue{{d.Name, "dir-mode", SeverityError, fmt.Sprintf("unknown mode %q (want %q or %q)", mode, dirs.ModeCopy, dirs.ModeSymlink)}}
+	}
+
+	info, err := os.Stat(d.Source)
+	switch {
+	case os.IsNotExist(err):
+		return []Issue{{d.Name, "dir-source", SeverityError, fmt.Sprintf("does not exist: %s", d.Source)}}
+	case err != nil:
+		return []Issue{{d.Name, "dir-source", SeverityError, fmt.Sprintf("cannot stat %s: %v", d.Source, err)}}
+	case !info.IsDir():
+		return []Issue{{d.Name, "dir-source", SeverityError, fmt.Sprintf("not a directory: %s", d.Source)}}
+	}
+
+	issues := []Issue{{d.Name, "dir-source", SeverityOK, fmt.Sprintf("%s (%s)", d.Source, mode)}}
+	if git.IsGitRepo(d.Source) {
+		issues = append(issues, Issue{d.Name, "dir-source", SeverityWarn,
+			"is a git repo — adding it as source:branch would give you a worktree instead of a copy"})
+	}
 	return issues
 }
 
@@ -106,11 +142,31 @@ type RepoStatus struct {
 	BranchMatches bool
 }
 
+// DirState classifies what is on disk for a plain directory entry.
+type DirState int
+
+const (
+	DirMissing  DirState = iota // nothing at the destination yet
+	DirOK                       // present, and matching the configured mode
+	DirDrifted                  // present, but not the way the config says
+	DirConflict                 // something else is occupying the destination
+)
+
+// DirStatus describes whether a plain directory matches the config.
+type DirStatus struct {
+	Name   string
+	Source string
+	Mode   string
+	State  DirState
+	Actual string // what is actually on disk, when drifted
+}
+
 // Status describes the sync state of a single grove.
 type Status struct {
 	GroveName string
 	GrovePath string
 	Repos     []RepoStatus
+	Dirs      []DirStatus
 }
 
 // Sync creates any worktrees defined in the grove config that do not yet exist
@@ -151,6 +207,16 @@ func Sync(name string, g *config.Grove, cacheDir string) error {
 			return fmt.Errorf("grove %s, repo %s: %w", name, repo.Name, err)
 		}
 	}
+
+	for _, d := range g.Dirs {
+		action, err := dirs.Ensure(d.Source, filepath.Join(g.Path, d.Name), d.EffectiveMode())
+		if err != nil {
+			return fmt.Errorf("grove %s, dir %s: %w", name, d.Name, err)
+		}
+		if action != "" {
+			fmt.Printf("  %s\n", action)
+		}
+	}
 	return nil
 }
 
@@ -189,6 +255,17 @@ func Remove(name string, g *config.Grove, cacheDir string, force bool) error {
 		}
 		_ = git.WorktreePrune(source)
 	}
+
+	for _, d := range g.Dirs {
+		dest := filepath.Join(g.Path, d.Name)
+		if _, err := os.Lstat(dest); os.IsNotExist(err) {
+			continue
+		}
+		fmt.Printf("  removing %s\n", dest)
+		if err := dirs.Remove(dest, d.EffectiveMode(), force); err != nil {
+			return fmt.Errorf("grove %s, dir %s: %w", name, d.Name, err)
+		}
+	}
 	return nil
 }
 
@@ -211,5 +288,34 @@ func GetStatus(name string, g *config.Grove) Status {
 		}
 		s.Repos = append(s.Repos, rs)
 	}
+	for _, d := range g.Dirs {
+		s.Dirs = append(s.Dirs, dirStatus(g.Path, d))
+	}
 	return s
+}
+
+func dirStatus(grovePath string, d config.Dir) DirStatus {
+	ds := DirStatus{Name: d.Name, Source: d.Source, Mode: d.EffectiveMode()}
+	st, err := dirs.Inspect(filepath.Join(grovePath, d.Name))
+	switch {
+	case err != nil || !st.Present:
+		ds.State = DirMissing
+	case ds.Mode == dirs.ModeCopy:
+		// The copy is grove-owned, so a real directory there is exactly what
+		// sync made. A symlink is left over from symlink mode.
+		if st.IsSymlink {
+			ds.State = DirDrifted
+			ds.Actual = "symlink to " + st.Target
+		} else {
+			ds.State = DirOK
+		}
+	case !st.IsSymlink:
+		ds.State = DirConflict
+	case st.Target == filepath.Clean(d.Source):
+		ds.State = DirOK
+	default:
+		ds.State = DirDrifted
+		ds.Actual = st.Target
+	}
+	return ds
 }

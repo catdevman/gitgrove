@@ -17,10 +17,12 @@ GitGrove uses **git worktrees** to link repos into a shared directory called a *
 └── my-feature/
     ├── backend/      ← worktree of ~/code/backend @ feat/new-api
     ├── frontend/     ← worktree of ~/code/frontend @ feat/new-ui
-    └── shared-lib/   ← worktree of ~/code/shared-lib @ main
+    ├── shared-lib/   ← worktree of ~/code/shared-lib @ main
+    └── api-docs/     ← copy of ~/notes/api-docs (not a repo)
 ```
 
-One directory. Three repos. Zero copies.
+One directory. Three repos. Zero copies — plus whatever plain directories you
+want along for the ride.
 
 ## Install
 
@@ -37,6 +39,9 @@ gitgrove create my-feature
 # Add repos — local paths or remote URLs, branch is after the colon
 gitgrove add my-feature ~/code/backend:feat/new-api
 gitgrove add my-feature https://github.com/org/frontend:feat/new-ui
+
+# Add a plain directory — no branch, no repo needed
+gitgrove add my-feature ~/notes/api-docs
 
 # Validate your config before doing anything
 gitgrove doctor my-feature
@@ -55,8 +60,9 @@ gitgrove sync my-feature
 | `gitgrove delete <name>` | Remove a grove from config (`--prune` to also remove from disk) |
 | `gitgrove list` | See all your groves |
 | `gitgrove add <grove> <source:branch> ...` | Add one or more repos to a grove |
-| `gitgrove remove <grove> <name>` | Remove a repo from a grove |
-| `gitgrove sync [grove]` | Create missing worktrees and fix any branch drift |
+| `gitgrove add <grove> <dir> ...` | Add one or more plain directories (no branch) |
+| `gitgrove remove <grove> <name>` | Remove a repo or directory from a grove |
+| `gitgrove sync [grove]` | Create missing worktrees and directories, and fix any drift |
 | `gitgrove status [grove]` | Check what's synced, what's missing, what's drifted |
 | `gitgrove doctor [grove]` | Validate config before you sync — exits non-zero on errors |
 
@@ -88,6 +94,50 @@ my-feature  shared    source      ERROR   not a git repo: ~/code/typo
 ```
 
 Exits with a non-zero status if any errors are found — useful in scripts or CI.
+
+## Plain Directories
+
+Not everything you want in a grove is a repo. Reference docs, a code example,
+a vendored SDK — anything with no git history behind it has no worktree to
+create, so GitGrove copies it in instead. Leave the branch off and it is
+treated as a plain directory:
+
+```sh
+gitgrove add my-feature ~/notes/api-docs
+gitgrove add my-feature ~/notes/api-docs --name docs   # rename it in the grove
+```
+
+**Copies are the default** because a grove is disposable: the copy is pruned
+along with everything else, and nothing that happens inside the grove — an
+agent rewriting files, say — can reach the original directory.
+
+When you do want the grove to point at the live directory, so edits land in the
+source:
+
+```sh
+gitgrove add my-feature ~/code/some-example --symlink
+```
+
+A few details:
+
+- **Copies are made once.** Re-running `sync` never overwrites a copy, so work
+  done inside the grove is safe.
+- **Symlinks are kept pointing at the source.** If you change the source in the
+  config, `sync` retargets the symlink — the same way it fixes branch drift.
+- **Adding a git repo without a branch is an error**, since copying a whole
+  repo including `.git` is rarely what was meant. Pass `--dir` if it is.
+- **Pruning a symlink never touches the source** — only the link is removed.
+
+```sh
+$ gitgrove status my-feature
+
+GROVE       REPO      STATUS  CONFIG BRANCH  ACTUAL BRANCH
+my-feature  backend   OK      feat/new-api   feat/new-api
+
+GROVE       DIR       STATUS   MODE     SOURCE
+my-feature  api-docs  OK       copy     ~/notes/api-docs
+my-feature  example   MISSING  symlink  ~/code/some-example
+```
 
 ## Remote Repos
 
@@ -129,6 +179,11 @@ branch = "feat/new-api"
 name = "frontend"
 source = "https://github.com/org/frontend"
 branch = "feat/new-ui"
+
+[[groves.my-feature.dirs]]
+name = "api-docs"
+source = "~/notes/api-docs"
+mode = "copy"   # or "symlink"; defaults to copy
 ```
 
 Edit it by hand or use the CLI — either works.
@@ -139,7 +194,7 @@ Edit it by hand or use the CLI — either works.
 - **Branches are created automatically.** If the branch you specify doesn't exist yet, `sync` creates it from HEAD.
 - **`sync` fixes branch drift.** If a worktree exists but is on the wrong branch, `sync` switches it — no need to remove and re-add.
 - **Remote repos are cloned on demand.** Pass an `https://` or `git@` URL as the source and `sync` handles the clone on first use.
-- **Nothing is duplicated.** Worktrees share the same git object store as your source repo. Disk usage is minimal.
+- **Nothing is duplicated.** Worktrees share the same git object store as your source repo. Disk usage is minimal. (Plain directories are the exception — those are copied, unless you ask for `--symlink`.)
 - **`sync` is safe to re-run.** It skips anything already in the correct state.
 
 ## Why Worktrees?

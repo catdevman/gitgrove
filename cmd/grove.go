@@ -77,10 +77,10 @@ var listCmd = &cobra.Command{
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "GROVE\tPATH\tREPOS")
+		fmt.Fprintln(w, "GROVE\tPATH\tREPOS\tDIRS")
 		for _, name := range groveNames() {
 			g := cfg.Groves[name]
-			fmt.Fprintf(w, "%s\t%s\t%d\n", name, g.Path, len(g.Repos))
+			fmt.Fprintf(w, "%s\t%s\t%d\t%d\n", name, g.Path, len(g.Repos), len(g.Dirs))
 		}
 		return w.Flush()
 	},
