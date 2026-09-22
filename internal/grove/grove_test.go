@@ -27,11 +27,21 @@ func isolate(t *testing.T) {
 
 func gitCmd(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+	out, err := exec.Command("git", gitArgs(dir, args)...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// gitArgs passes an identity per-command as well as through the environment,
+// so building a fixture never depends on the ambient git configuration.
+func gitArgs(dir string, args []string) []string {
+	return append([]string{"-C", dir,
+		"-c", "user.name=gitgrove test",
+		"-c", "user.email=test@example.invalid",
+		"-c", "commit.gpgsign=false",
+	}, args...)
 }
 
 func initRepo(t *testing.T, at string) string {

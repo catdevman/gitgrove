@@ -25,7 +25,7 @@ func isolate(t *testing.T) {
 
 func gitCmd(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.Command("git", gitArgs(dir, args)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, out)
@@ -34,6 +34,16 @@ func gitCmd(t *testing.T, dir string, args ...string) string {
 }
 
 // initRepo creates a repository on branch main with one commit.
+// gitArgs passes an identity per-command as well as through the environment,
+// so building a fixture never depends on the ambient git configuration.
+func gitArgs(dir string, args []string) []string {
+	return append([]string{"-C", dir,
+		"-c", "user.name=gitgrove test",
+		"-c", "user.email=test@example.invalid",
+		"-c", "commit.gpgsign=false",
+	}, args...)
+}
+
 func initRepo(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "repo")

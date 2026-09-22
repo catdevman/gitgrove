@@ -55,17 +55,25 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 	return string(out), runErr
 }
 
-// testEnv sets up an isolated home and config path, and returns the config path.
-func testEnv(t *testing.T) string {
+// isolateGit makes git ignore whoever is running the suite: no global or
+// system config, and an identity of our own. Without it a machine with no
+// configured user cannot even commit, and one with unusual settings (signing,
+// hooks, templates) would produce different results.
+func isolateGit(t *testing.T) {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	t.Setenv("GIT_AUTHOR_NAME", "gitgrove test")
 	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.invalid")
 	t.Setenv("GIT_COMMITTER_NAME", "gitgrove test")
 	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.invalid")
+}
+
+// testEnv sets up an isolated home and config path, and returns the config path.
+func testEnv(t *testing.T) string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	isolateGit(t)
 	return filepath.Join(t.TempDir(), "config.toml")
 }
 
@@ -83,11 +91,20 @@ func initRepo(t *testing.T, at string) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")
 	}
+	isolateGit(t)
 	if err := os.MkdirAll(at, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	run := func(args ...string) {
-		out, err := exec.Command("git", append([]string{"-C", at}, args...)...).CombinedOutput()
+		// The identity is passed per-command as well as through the
+		// environment, so building a fixture never depends on the ambient git
+		// configuration.
+		full := append([]string{"-C", at,
+			"-c", "user.name=gitgrove test",
+			"-c", "user.email=test@example.invalid",
+			"-c", "commit.gpgsign=false",
+		}, args...)
+		out, err := exec.Command("git", full...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 		}
