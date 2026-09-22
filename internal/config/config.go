@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/catdevman/gitgrove/internal/dirs"
 )
 
 // Repo is a single repository entry within a grove.
@@ -17,10 +19,30 @@ type Repo struct {
 	Branch string `toml:"branch"`
 }
 
-// Grove is a named workspace containing linked worktrees from multiple repos.
+// Dir is a plain (non-git) directory made available inside a grove. A grove
+// often needs reference material — docs, an example, a vendored SDK — that has
+// no git history and therefore no worktree to create.
+type Dir struct {
+	Name   string `toml:"name"`
+	Source string `toml:"source"`
+	Mode   string `toml:"mode,omitempty"`
+}
+
+// EffectiveMode returns the directory's mode, defaulting to copy when unset so
+// a hand-written config can omit it.
+func (d Dir) EffectiveMode() string {
+	if d.Mode == "" {
+		return dirs.ModeCopy
+	}
+	return d.Mode
+}
+
+// Grove is a named workspace containing linked worktrees from multiple repos,
+// plus any plain directories added alongside them.
 type Grove struct {
 	Path  string `toml:"path"`
 	Repos []Repo `toml:"repos"`
+	Dirs  []Dir  `toml:"dirs,omitempty"`
 }
 
 // Config is the top-level configuration.
@@ -113,6 +135,9 @@ func Load(path string) (*Config, error) {
 		for i := range g.Repos {
 			g.Repos[i].Source = expandHome(g.Repos[i].Source, home)
 		}
+		for i := range g.Dirs {
+			g.Dirs[i].Source = expandHome(g.Dirs[i].Source, home)
+		}
 	}
 	return cfg, nil
 }
@@ -175,10 +200,15 @@ func contractPaths(cfg *Config) *Config {
 		ng := &Grove{
 			Path:  contractHome(g.Path, home),
 			Repos: make([]Repo, len(g.Repos)),
+			Dirs:  make([]Dir, len(g.Dirs)),
 		}
 		copy(ng.Repos, g.Repos)
 		for i := range ng.Repos {
 			ng.Repos[i].Source = contractHome(ng.Repos[i].Source, home)
+		}
+		copy(ng.Dirs, g.Dirs)
+		for i := range ng.Dirs {
+			ng.Dirs[i].Source = contractHome(ng.Dirs[i].Source, home)
 		}
 		out.Groves[name] = ng
 	}
