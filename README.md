@@ -26,6 +26,27 @@ want along for the ride.
 
 ## Install
 
+### Homebrew
+
+```sh
+brew tap catdevman/tools
+brew install catdevman/tools/gitgrove
+```
+
+Or in one step, without tapping first:
+
+```sh
+brew install catdevman/tools/gitgrove
+```
+
+Upgrade later with:
+
+```sh
+brew upgrade catdevman/tools/gitgrove
+```
+
+### Go
+
 ```sh
 go install github.com/catdevman/gitgrove@latest
 ```
