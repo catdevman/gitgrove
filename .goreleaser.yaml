@@ -34,6 +34,7 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/catdevman/gitgrove"
     description: "Task-scoped git worktree workspaces for AI coding tools"
+    license: "MIT"
 
 release:
   replace_existing_artifacts: true

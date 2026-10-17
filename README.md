@@ -222,6 +222,10 @@ Edit it by hand or use the CLI — either works.
 
 Git worktrees let you check out a branch into a new directory without cloning the repo again. The `.git` data lives in one place; the working files can live anywhere. GitGrove just does this for multiple repos at once and keeps track of the whole picture for you.
 
+## License
+
+[MIT](LICENSE)
+
 ---
 
 Happy little trees. 🌱
